@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
                            QHBoxLayout, QLineEdit, QPushButton, QListWidget,
-                           QLabel, QFrame)
+                           QLabel, QFrame, QScrollArea)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from graph_canvas import GraphCanvas
+from editable_equation import EditableEquation
 import numpy as np
 
 class EquationWidget(QFrame):
@@ -46,14 +47,21 @@ class GraphingWindow(QMainWindow):
                             "• Drag to pan, scroll to zoom")
         instructions.setStyleSheet("color: gray;")
         
-        # Equation list
-        self.equation_list = QListWidget()
-        self.equation_list.itemDoubleClicked.connect(self.remove_equation)
+        # Replace QVBoxLayout with QWidget and QVBoxLayout
+        equation_widget = QWidget()
+        self.equation_list = QVBoxLayout(equation_widget)
+        self.equation_list.setAlignment(Qt.AlignmentFlag.AlignTop)
         
-        # Add widgets to left panel
+        # Add scroll area for equations
+        scroll = QScrollArea()
+        scroll.setWidget(equation_widget)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        # Update left panel layout
         left_layout.addWidget(self.equation_input)
         left_layout.addWidget(instructions)
-        left_layout.addWidget(self.equation_list)
+        left_layout.addWidget(scroll)
         
         # Graph canvas
         self.graph_canvas = GraphCanvas()
@@ -62,7 +70,9 @@ class GraphingWindow(QMainWindow):
         layout.addWidget(left_panel, 1)
         layout.addWidget(self.graph_canvas, 4)
         
+        # Store equations in a list instead of dict
         self.equations = []
+        self.equation_widgets = []
         
         # Style
         self.setStyleSheet("""
@@ -83,13 +93,28 @@ class GraphingWindow(QMainWindow):
     def add_equation(self):
         equation = self.equation_input.text().strip()
         if equation:
+            # Create editable equation widget
+            eq_widget = EditableEquation(equation, self)
+            eq_widget.equation_changed.connect(self.update_equation)
+            eq_widget.delete_requested.connect(self.remove_equation)
+            
             self.equations.append(equation)
-            self.equation_list.addItem(equation)
+            self.equation_widgets.append(eq_widget)
+            self.equation_list.addWidget(eq_widget)
             self.equation_input.clear()
             self.graph_canvas.plot_equations(self.equations)
     
-    def remove_equation(self, item):
-        equation = item.text()
-        self.equations.remove(equation)
-        self.equation_list.takeItem(self.equation_list.row(item))
-        self.graph_canvas.plot_equations(self.equations) 
+    def update_equation(self, old_eq, new_eq):
+        if old_eq in self.equations:
+            index = self.equations.index(old_eq)
+            self.equations[index] = new_eq
+            self.graph_canvas.plot_equations(self.equations)
+    
+    def remove_equation(self, equation):
+        if equation in self.equations:
+            index = self.equations.index(equation)
+            self.equations.pop(index)
+            widget = self.equation_widgets.pop(index)
+            self.equation_list.removeWidget(widget)
+            widget.deleteLater()
+            self.graph_canvas.plot_equations(self.equations) 
